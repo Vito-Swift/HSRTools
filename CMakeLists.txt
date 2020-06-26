@@ -12,3 +12,4 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native -mavx2 -O3")
 
 add_executable("${PROJECT_NAME}_Encode_Stage1" prototype/HID.cpp)
+add_executable(isal prototype/testisal.cpp)
