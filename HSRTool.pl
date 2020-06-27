@@ -23,7 +23,8 @@ sub Usage {
         . "        -force_rmrf                  If output directory exists, enable this option to force remove it. Default to be disabled.\n"
         . "    -encode/decode <FILE_NAME>       Encode/Decode a file in the disk. Please ensure that HSRTool has been built\n"
         . "        -bin_dir <DIRECTORY>         Specify directory to place binary executables. Default to be \"HSRBin\"\n"
-        . "        -output <DIRECTORY>      Specify directory to place encoded/decoded files\n"
+        . "        -output <DIRECTORY>          Specify directory to place encoded/decoded files\n"
+        . "    -benchmark                       Compare the encoding/decoding performance between ISA-L and HSR under the same MDS parameters"
         . "    -verbose                         Log informative messages\n"
         . "\n"
         . "Example: \n"
@@ -35,9 +36,16 @@ sub Usage {
         . "    #3  Decode file \"dummy.txt\" after built\n"
         . "        > HSRTool.pl -decode ./encoded_chunks/dummy.txt -bin_dir ./HSRBin/ -output ./\n\n"
         . "\n"
+
+    exit 1;
 }
 
 # Main
 {
-   Usage();
+    {
+        local(@ARGV) = @ARGV;
+        GetOptions(""
+
+        )
+    }
 }

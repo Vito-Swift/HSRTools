@@ -28,27 +28,6 @@
 
 #define SAMPLE_NUM 0x01UL
 #define ENCODE_FILE "dummy.txt"
-//#define STORE_FILE(CHUNK_ID, TYPE)                                                                  \
-//    do {                                                                                            \
-//        std::ofstream FileOut;                                                                      \
-//        if (TYPE == 0)                                                                              \
-//            FileOut.open(std::string(ENCODE_FILE)+std::string(".chunk")+std::to_string(CHUNK_ID));  \
-//        else                                                                                        \
-//            FileOut.open(std::string(ENCODE_FILE)+std::string(".chunk")+std::to_string(CHUNK_ID+8));\
-//        if (!FileOut)                                                                               \
-//        {                                                                                           \
-//            PRINTF_ERR_STAMP("cannot open file to write chunk on! file saving is not success.\n");  \
-//            return ;                                                                                \
-//        }                                                                                           \
-//                                                                                                    \
-//    #if (TYPE==0)                                                                           \
-//            FileOut.write((char*) (input_chunk_##CHUNK_ID), sizeof(input_chunk_##CHUNK_ID));        \
-//        else                                                                                        \
-//        {                                                                                           \
-//            FileOut.write((char*) (parity_packet_##CHUNK_ID), sizeof(parity_packet_##CHUNK_ID));    \
-//#endif                                                                                     \
-//        FileOut.close();                                                                            \
-//    } while (0);
 
 uint8_t input_chunk_1[CHUNK_SIZE] = {0};
 uint8_t input_chunk_2[CHUNK_SIZE] = {0};

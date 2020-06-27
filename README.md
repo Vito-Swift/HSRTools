@@ -3,7 +3,7 @@ A toolkit to perform MDS encoding/decoding on data blocks with Hybrid Shift-XOR 
 
 ## Note
 
-Currently this toolkit is under intensive development. We set three stage goal as milestones
+**Currently this toolkit is under intensive development.** We set three stage goal as milestones
 
 - Stage 1: Produce encode/decode toolkit on parameter (6,3) and (8,3), ETA June 30th 2020
 - Stage 2: Generalize the toolkit with perl script. ETA mid July 2020
@@ -13,6 +13,7 @@ Currently this toolkit is under intensive development. We set three stage goal a
 
 To use our tools please ensure following dependencies are available on your system
 
+- Linux OS (preferred, since we do not test on Windows/MacOS system)
 - perl
 - gnu c/c++ compilers
-
+- libisa-l (for comparision use)
