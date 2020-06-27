@@ -19,7 +19,7 @@
 
 #include "utils.h"
 
-#define FILE_SIZE (1024UL*1024UL*1024UL)
+#define FILE_SIZE (128UL*1024UL*1024UL)
 #define CHUNK_SIZE (FILE_SIZE / 8)
 #define SLICE 32
 #define TOTAL_SLICE_NUM (CHUNK_SIZE / SLICE)
@@ -28,6 +28,27 @@
 
 #define SAMPLE_NUM 0x01UL
 #define ENCODE_FILE "dummy.txt"
+//#define STORE_FILE(CHUNK_ID, TYPE)                                                                  \
+//    do {                                                                                            \
+//        std::ofstream FileOut;                                                                      \
+//        if (TYPE == 0)                                                                              \
+//            FileOut.open(std::string(ENCODE_FILE)+std::string(".chunk")+std::to_string(CHUNK_ID));  \
+//        else                                                                                        \
+//            FileOut.open(std::string(ENCODE_FILE)+std::string(".chunk")+std::to_string(CHUNK_ID+8));\
+//        if (!FileOut)                                                                               \
+//        {                                                                                           \
+//            PRINTF_ERR_STAMP("cannot open file to write chunk on! file saving is not success.\n");  \
+//            return ;                                                                                \
+//        }                                                                                           \
+//                                                                                                    \
+//    #if (TYPE==0)                                                                           \
+//            FileOut.write((char*) (input_chunk_##CHUNK_ID), sizeof(input_chunk_##CHUNK_ID));        \
+//        else                                                                                        \
+//        {                                                                                           \
+//            FileOut.write((char*) (parity_packet_##CHUNK_ID), sizeof(parity_packet_##CHUNK_ID));    \
+//#endif                                                                                     \
+//        FileOut.close();                                                                            \
+//    } while (0);
 
 uint8_t input_chunk_1[CHUNK_SIZE] = {0};
 uint8_t input_chunk_2[CHUNK_SIZE] = {0};
@@ -52,157 +73,164 @@ void encode() {
     // |  z^7  &  z^6  &  z^5  &  z^4  &  z^3  &  z^2  &  z^1  &  1    |
 
     __m256i mxx1, mxx2;
+    const uint64_t chunk_size = 512;
+    const uint64_t chunk_num = TOTAL_SLICE_NUM / chunk_size;
+    uint64_t chunk_slice_id;
     uint64_t slice_id;
     uint64_t slice_offset_1;
     uint64_t slice_offset_2;
     uint64_t slice_offset_3;
-    for (slice_id = 0; slice_id < TOTAL_SLICE_NUM; slice_id++)
+
+    for (chunk_slice_id = 0; chunk_slice_id < chunk_num; chunk_slice_id++)
     {
-        slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
-        mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_1[slice_offset_2]);
-        _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_2], mxx1);
-        _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx1);
-        _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_2 + 7 * SLICE], mxx1);
-    }
+        for (slice_id = chunk_slice_id * chunk_size; slice_id < chunk_slice_id * chunk_size + chunk_size; slice_id++)
+        {
+            slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
+            mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_1[slice_offset_2]);
+            _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_2], mxx1);
+            _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx1);
+            _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_2 + 7 * SLICE], mxx1);
+        }
 
-    for (slice_id = 0; slice_id < TOTAL_SLICE_NUM; slice_id++)
-    {
-        slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
-        slice_offset_1 = ((slice_id + 1) * SLICE); // point to the start point of memory block in packet 1
-        slice_offset_3 = ((slice_id + 6) * SLICE); // point to the start point of memory block in packet 2
+        for (slice_id = chunk_slice_id * chunk_size; slice_id < chunk_slice_id * chunk_size + chunk_size; slice_id++)
+        {
+            slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
+            slice_offset_1 = ((slice_id + 1) * SLICE); // point to the start point of memory block in packet 1
+            slice_offset_3 = ((slice_id + 6) * SLICE); // point to the start point of memory block in packet 2
 
-        // load memory block of file into register
-        mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_2[slice_offset_2]);
+            // load memory block of file into register
+            mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_2[slice_offset_2]);
 
-        // xor and store in packet 1
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
+            // xor and store in packet 1
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
-    }
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
+        }
 
-    for (slice_id = 0; slice_id < TOTAL_SLICE_NUM; slice_id++)
-    {
-        slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
-        slice_offset_1 = ((slice_id + 2) * SLICE); // point to the start point of memory block in packet 1
-        slice_offset_3 = ((slice_id + 5) * SLICE); // point to the start point of memory block in packet 2
+        for (slice_id = chunk_slice_id * chunk_size; slice_id < chunk_slice_id * chunk_size + chunk_size; slice_id++)
+        {
+            slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
+            slice_offset_1 = ((slice_id + 2) * SLICE); // point to the start point of memory block in packet 1
+            slice_offset_3 = ((slice_id + 5) * SLICE); // point to the start point of memory block in packet 2
 
-        // load memory block of file into register
-        mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_3[slice_offset_2]);
+            // load memory block of file into register
+            mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_3[slice_offset_2]);
 
-        // xor and store in packet 1
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
+            // xor and store in packet 1
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
-    }
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
+        }
 
-    for (slice_id = 0; slice_id < TOTAL_SLICE_NUM; slice_id++)
-    {
-        slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
-        slice_offset_1 = ((slice_id + 3) * SLICE); // point to the start point of memory block in packet 1
-        slice_offset_3 = ((slice_id + 4) * SLICE); // point to the start point of memory block in packet 2
+        for (slice_id = chunk_slice_id * chunk_size; slice_id < chunk_slice_id * chunk_size + chunk_size; slice_id++)
+        {
+            slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
+            slice_offset_1 = ((slice_id + 3) * SLICE); // point to the start point of memory block in packet 1
+            slice_offset_3 = ((slice_id + 4) * SLICE); // point to the start point of memory block in packet 2
 
-        // load memory block of file into register
-        mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_4[slice_offset_2]);
+            // load memory block of file into register
+            mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_4[slice_offset_2]);
 
-        // xor and store in packet 1
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
+            // xor and store in packet 1
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
-    }
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
+        }
 
-    for (slice_id = 0; slice_id < TOTAL_SLICE_NUM; slice_id++)
-    {
-        slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
-        slice_offset_1 = ((slice_id + 4) * SLICE); // point to the start point of memory block in packet 1
-        slice_offset_3 = ((slice_id + 3) * SLICE); // point to the start point of memory block in packet 2
+        for (slice_id = chunk_slice_id * chunk_size; slice_id < chunk_slice_id * chunk_size + chunk_size; slice_id++)
+        {
+            slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
+            slice_offset_1 = ((slice_id + 4) * SLICE); // point to the start point of memory block in packet 1
+            slice_offset_3 = ((slice_id + 3) * SLICE); // point to the start point of memory block in packet 2
 
-        // load memory block of file into register
-        mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_5[slice_offset_2]);
+            // load memory block of file into register
+            mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_5[slice_offset_2]);
 
-        // xor and store in packet 1
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
+            // xor and store in packet 1
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
-    }
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
+        }
 
-    for (slice_id = 0; slice_id < TOTAL_SLICE_NUM; slice_id++)
-    {
-        slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
-        slice_offset_1 = ((slice_id + 5) * SLICE); // point to the start point of memory block in packet 1
-        slice_offset_3 = ((slice_id + 2) * SLICE); // point to the start point of memory block in packet 2
+        for (slice_id = chunk_slice_id * chunk_size; slice_id < chunk_slice_id * chunk_size + chunk_size; slice_id++)
+        {
+            slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
+            slice_offset_1 = ((slice_id + 5) * SLICE); // point to the start point of memory block in packet 1
+            slice_offset_3 = ((slice_id + 2) * SLICE); // point to the start point of memory block in packet 2
 
-        // load memory block of file into register
-        mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_6[slice_offset_2]);
+            // load memory block of file into register
+            mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_6[slice_offset_2]);
 
-        // xor and store in packet 1
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
+            // xor and store in packet 1
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
-    }
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
+        }
 
-    for (slice_id = 0; slice_id < TOTAL_SLICE_NUM; slice_id++)
-    {
-        slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
-        slice_offset_1 = ((slice_id + 6) * SLICE); // point to the start point of memory block in packet 1
-        slice_offset_3 = ((slice_id + 1) * SLICE); // point to the start point of memory block in packet 2
+        for (slice_id = chunk_slice_id * chunk_size; slice_id < chunk_slice_id * chunk_size + chunk_size; slice_id++)
+        {
+            slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
+            slice_offset_1 = ((slice_id + 6) * SLICE); // point to the start point of memory block in packet 1
+            slice_offset_3 = ((slice_id + 1) * SLICE); // point to the start point of memory block in packet 2
 
-        // load memory block of file into register
-        mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_7[slice_offset_2]);
+            // load memory block of file into register
+            mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_7[slice_offset_2]);
 
-        // xor and store in packet 1
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
+            // xor and store in packet 1
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
-    }
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
+        }
 
-    for (slice_id = 0; slice_id < TOTAL_SLICE_NUM; slice_id++)
-    {
-        slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
-        slice_offset_1 = ((slice_id + 7) * SLICE); // point to the start point of memory block in packet 1
-        slice_offset_3 = slice_id * SLICE; // point to the start point of memory block in packet 2
+        for (slice_id = chunk_slice_id * chunk_size; slice_id < chunk_slice_id * chunk_size + chunk_size; slice_id++)
+        {
+            slice_offset_2 = slice_id * SLICE; // point to the start point of memory block (packet $slice_id)
+            slice_offset_1 = ((slice_id + 7) * SLICE); // point to the start point of memory block in packet 1
+            slice_offset_3 = slice_id * SLICE; // point to the start point of memory block in packet 2
 
-        // load memory block of file into register
-        mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_8[slice_offset_2]);
+            // load memory block of file into register
+            mxx1 = _mm256_loadu_si256((__m256i *) &input_chunk_8[slice_offset_2]);
 
-        // xor and store in packet 1
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
+            // xor and store in packet 1
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_1[slice_offset_1]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_1[slice_offset_1], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_2[slice_offset_2]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_2[slice_offset_2], mxx2);
 
-        mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
-        _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
+            mxx2 = _mm256_xor_si256(mxx1, *((__m256i *) &parity_packet_3[slice_offset_3]));
+            _mm256_storeu_si256((__m256i *) &parity_packet_3[slice_offset_3], mxx2);
+        }
     }
 }
 
